@@ -1,0 +1,41 @@
+services:
+  ocr-worker:
+    build: .
+    image: vidbest-multi-ocr:local
+    restart: unless-stopped
+    mem_limit: 420m
+    cpus: 0.75
+    pids_limit: 100
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODELS: ${GEMINI_MODELS:-gemini-3.5-flash,gemini-3.8-flash}
+      ENABLE_GEMINI: ${ENABLE_GEMINI:-false}
+      OCR_LANG: eng+sin
+      FRAME_INTERVAL: "5"
+      MAX_FRAMES: "12"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - ocr_input:/data/input:ro
+      - ocr_output:/data/output
+    command: ["python", "/app/worker.py", "--watch"]
+  rapid-ocr:
+    profiles: [rapid]
+    build:
+      context: .
+      dockerfile: Dockerfile.rapid
+    image: vidbest-rapid-ocr:local
+    restart: "no"
+    mem_limit: 650m
+    cpus: 0.8
+    environment:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - ocr_output:/data/output
+    command: ["python", "/app/rapid_worker.py"]
+volumes:
+  ocr_input:
+  ocr_output:
