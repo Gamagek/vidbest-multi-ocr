@@ -44,6 +44,40 @@ def gemini(frame):
                 errors.append({'model':model,'message':str(e)});break
     return {'status':'all_models_failed','errors':errors}
 
+def vision(frame):
+    """Optional OpenAI-compatible remote VLM; never sends frames unless enabled."""
+    if os.getenv('ENABLE_VISION','false').lower()!='true':
+        return {'status':'disabled'}
+    endpoint=os.getenv('VISION_API_URL','').strip()
+    model=os.getenv('VISION_MODEL','Qwen/Qwen3-VL-8B-Instruct').strip()
+    if not endpoint.startswith('https://'):
+        return {'status':'configuration_error','message':'VISION_API_URL must be HTTPS'}
+    if not endpoint.endswith('/chat/completions'):
+        return {'status':'configuration_error','message':'Expected an OpenAI-compatible /chat/completions URL'}
+    if not model:
+        return {'status':'configuration_error','message':'VISION_MODEL missing'}
+    key=os.getenv('VISION_API_KEY','').strip()
+    data=base64.b64encode(frame.read_bytes()).decode('ascii')
+    prompt=('Describe only visible people, objects, actions and setting in this single frame. '
+            'Transcribe readable text exactly. Mark uncertainty. Do not infer unseen events.')
+    payload={'model':model,'temperature':0.1,'max_tokens':450,'messages':[{'role':'user','content':[
+        {'type':'text','text':prompt},
+        {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+data}}
+    ]}]}
+    headers={'Content-Type':'application/json'}
+    if key:headers['Authorization']='Bearer '+key
+    try:
+        req=urllib.request.Request(endpoint,data=json.dumps(payload).encode(),headers=headers,method='POST')
+        with urllib.request.urlopen(req,timeout=65) as resp: result=json.load(resp)
+        msg=result.get('choices',[{}])[0].get('message',{}).get('content','')
+        if isinstance(msg,list):
+            msg=' '.join(x.get('text','') for x in msg if isinstance(x,dict))
+        return {'status':'ok','model':model,'text':str(msg)} if msg else {'status':'empty_response'}
+    except urllib.error.HTTPError as e:
+        return {'status':'http_error','code':e.code,'message':e.read(250).decode(errors='replace')}
+    except Exception as e:
+        return {'status':'request_error','message':str(e)[:250]}
+
 def scene_times(video):
     """Detect likely shot boundaries; this does not identify semantic events."""
     threshold=max(0.1,min(0.8,float(os.getenv('SCENE_THRESHOLD','0.35'))))
@@ -68,7 +102,7 @@ def process(video):
     for i,frame in enumerate(sorted(frames.glob('frame_*.jpg'))):
         try: local=run(['tesseract',str(frame),'stdout','-l',os.getenv('OCR_LANG','eng+sin')]).strip()
         except Exception as e: local=f'[tesseract error: {e}]'
-        observations.append({'frame':frame.name,'approx_seconds':i*interval,'tesseract':local,'gemini':gemini(frame)})
+        observations.append({'frame':frame.name,'approx_seconds':i*interval,'tesseract':local,'gemini':gemini(frame),'vision':vision(frame)})
         (out/'evidence.json').write_text(json.dumps({'source':video.name,'frames':observations,'scene_cut_seconds':cuts,'scene_cut_note':'Visual shot boundaries only, not semantic action recognition.','verified':False,'note':'Frame evidence only; not full video understanding or editorial approval.'},ensure_ascii=False,indent=2))
         time.sleep(1)
     (out/'done.flag').write_text('complete')
