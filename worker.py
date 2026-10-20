@@ -1,4 +1,4 @@
-import argparse, base64, json, os, pathlib, subprocess, time, urllib.request, urllib.error
+import argparse, base64, json, os, pathlib, re, subprocess, time, urllib.request, urllib.error
 from urllib.parse import quote
 ROOT=pathlib.Path('/data'); INPUT=ROOT/'input'; OUTPUT=ROOT/'output'
 def run(cmd):
@@ -44,18 +44,32 @@ def gemini(frame):
                 errors.append({'model':model,'message':str(e)});break
     return {'status':'all_models_failed','errors':errors}
 
+def scene_times(video):
+    """Detect likely shot boundaries; this does not identify semantic events."""
+    threshold=max(0.1,min(0.8,float(os.getenv('SCENE_THRESHOLD','0.35'))))
+    limit=max(1,min(24,int(os.getenv('MAX_SCENE_CUTS','12'))))
+    cmd=['ffmpeg','-hide_banner','-nostdin','-threads','1','-i',str(video),
+         '-vf',f"select=gt(scene\\,{threshold}),showinfo",'-an','-f','null','-']
+    try:
+        p=subprocess.run(cmd,capture_output=True,text=True,timeout=180)
+        times=[float(x) for x in re.findall(r'pts_time:([0-9.]+)',p.stderr)]
+        return sorted(set(round(t,2) for t in times))[:limit]
+    except Exception:
+        return []
+
 def process(video):
     out=OUTPUT/video.stem; out.mkdir(parents=True,exist_ok=True)
     frames=out/'frames'; frames.mkdir(exist_ok=True)
     interval=max(1,int(os.getenv('FRAME_INTERVAL','5')))
     count=max(1,min(30,int(os.getenv('MAX_FRAMES','12'))))
     run(['ffmpeg','-hide_banner','-loglevel','error','-nostdin','-threads','1','-y','-i',str(video),'-vf',f'fps=1/{interval},scale=480:-2','-frames:v',str(count),'-q:v','6',str(frames/'frame_%03d.jpg')])
+    cuts=scene_times(video) if os.getenv('ENABLE_SCENE_DETECTION','true').lower()=='true' else []
     observations=[]
     for i,frame in enumerate(sorted(frames.glob('frame_*.jpg'))):
         try: local=run(['tesseract',str(frame),'stdout','-l',os.getenv('OCR_LANG','eng+sin')]).strip()
         except Exception as e: local=f'[tesseract error: {e}]'
         observations.append({'frame':frame.name,'approx_seconds':i*interval,'tesseract':local,'gemini':gemini(frame)})
-        (out/'evidence.json').write_text(json.dumps({'source':video.name,'frames':observations,'verified':False,'note':'Frame evidence only; not full video understanding or editorial approval.'},ensure_ascii=False,indent=2))
+        (out/'evidence.json').write_text(json.dumps({'source':video.name,'frames':observations,'scene_cut_seconds':cuts,'scene_cut_note':'Visual shot boundaries only, not semantic action recognition.','verified':False,'note':'Frame evidence only; not full video understanding or editorial approval.'},ensure_ascii=False,indent=2))
         time.sleep(1)
     (out/'done.flag').write_text('complete')
     print('Processed',video.name,flush=True)
