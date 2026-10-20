@@ -1,7 +1,17 @@
 services:
+  init-output-permissions:
+    image: busybox:1.36
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/output && chown -R 65534:65534 /data/output"]
+    volumes:
+      - ocr_output:/data/output
+    restart: "no"
   ocr-worker:
     image: ghcr.io/gamagek/vidbest-multi-ocr:latest
     pull_policy: always
+    depends_on:
+      init-output-permissions:
+        condition: service_completed_successfully
     restart: unless-stopped
     mem_limit: 420m
     cpus: 0.75
@@ -10,11 +20,18 @@ services:
       - no-new-privileges:true
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODELS: ${GEMINI_MODELS:-gemini-3.5-flash,gemini-3.8-flash}
+      GEMINI_MODELS: ${GEMINI_MODELS:-gemini-2.5-flash}
       ENABLE_GEMINI: ${ENABLE_GEMINI:-false}
       OCR_LANG: eng+sin
       FRAME_INTERVAL: "5"
       MAX_FRAMES: "12"
+      ENABLE_VISION: ${ENABLE_VISION:-false}
+      VISION_API_URL: ${VISION_API_URL:-}
+      VISION_MODEL: ${VISION_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
+      VISION_API_KEY: ${VISION_API_KEY:-}
+      ENABLE_SCENE_DETECTION: "true"
+      SCENE_THRESHOLD: "0.35"
+      MAX_SCENE_CUTS: "12"
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
     volumes:
