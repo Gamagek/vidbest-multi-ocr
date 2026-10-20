@@ -1,0 +1,7 @@
+FROM python:3.11-slim-bookworm
+RUN pip install --no-cache-dir rapidocr onnxruntime pillow
+WORKDIR /app
+COPY rapid_worker.py .
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+USER 65534:65534
+CMD ["python", "/app/rapid_worker.py"]
