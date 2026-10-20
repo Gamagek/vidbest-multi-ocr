@@ -1,7 +1,7 @@
 services:
   ocr-worker:
-    build: .
-    image: vidbest-multi-ocr:local
+    image: ghcr.io/gamagek/vidbest-multi-ocr:latest
+    pull_policy: always
     restart: unless-stopped
     mem_limit: 420m
     cpus: 0.75
@@ -21,21 +21,6 @@ services:
       - ocr_input:/data/input:ro
       - ocr_output:/data/output
     command: ["python", "/app/worker.py", "--watch"]
-  rapid-ocr:
-    profiles: [rapid]
-    build:
-      context: .
-      dockerfile: Dockerfile.rapid
-    image: vidbest-rapid-ocr:local
-    restart: "no"
-    mem_limit: 650m
-    cpus: 0.8
-    environment:
-      OMP_NUM_THREADS: "1"
-      OPENBLAS_NUM_THREADS: "1"
-    volumes:
-      - ocr_output:/data/output
-    command: ["python", "/app/rapid_worker.py"]
 volumes:
   ocr_input:
   ocr_output:
