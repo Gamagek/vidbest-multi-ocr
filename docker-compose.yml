@@ -25,6 +25,10 @@ services:
       OCR_LANG: eng+sin
       FRAME_INTERVAL: "5"
       MAX_FRAMES: "12"
+      ENABLE_VISION: ${ENABLE_VISION:-false}
+      VISION_API_URL: ${VISION_API_URL:-}
+      VISION_MODEL: ${VISION_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
+      VISION_API_KEY: ${VISION_API_KEY:-}
       ENABLE_SCENE_DETECTION: "true"
       SCENE_THRESHOLD: "0.35"
       MAX_SCENE_CUTS: "12"
